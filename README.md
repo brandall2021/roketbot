@@ -19,10 +19,15 @@ como **sistema independiente sobre PostgreSQL**.
   - 4 expedientes y 1.138 líneas duplicadas en el legado, colapsados por el
     `UNIQUE` (el bot los hubiera duplicado)
 - `GET /health`, `/api/resumen`, `/api/corridas`, `/api/expedientes` y el panel: ✅
+- Endpoint del PJud probado con **captcha real (2captcha)**:
+  - un solo token sirve para toda la corrida (varios expedientes), no uno por
+    expediente
+  - corrida real verificada: expediente `762/22` pasó de 220 a **224
+    movimientos**, detectó 4 nuevos y quedó en `SI`
 - Endpoint del PJud probado: con token inválido devuelve `404` + mensaje
   *"No se puede validar el captcha"*. El sistema **aborta la corrida** y la marca
   `FAILED`, sin ensuciar los expedientes con `KO` falsos.
-- Pendiente: configurar el proveedor de captcha y hacer la primera corrida real.
+- Pendiente: primera corrida masiva y despliegue en Dokploy.
 
 ## Arquitectura
 
@@ -177,9 +182,10 @@ expedientes worker --interval 3600 --notify
 ## Fases
 
 - [x] **F1** — esquema, API, panel, worker, idempotencia, importador
-- [ ] **F2** — corrida real contra el PJud + comparación con lo que hizo el bot
+- [x] **F2** — corrida real contra el PJud (captcha 2captcha) y detección de
+      movimientos nuevos sobre el historial importado
 - [ ] **F3** — reintento automático de `KO`, alertas, métricas
-- [ ] **F4** — programación diaria y operación
+- [ ] **F4** — programación diaria y operación en Dokploy
 
 Rocketbot queda como respaldo permanente: no hay fase de retiro.
 
@@ -190,3 +196,6 @@ Rocketbot queda como respaldo permanente: no hay fase de retiro.
 - Mantener `REQUEST_DELAY_S` alto (3s) para no saturar el servidor del PJud.
 - El captcha es el punto más frágil. Si se consigue acceso oficial, se reemplaza
   `services/captcha.py` sin tocar el resto.
+- Se pide **un token por corrida** y se reutiliza en todos los expedientes
+  (verificado: el PJud lo acepta para consultas sucesivas). El logger de `httpx`
+  se silencia para que el token no quede en los logs.

@@ -97,6 +97,9 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, settings().log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
     )
+    # httpx registra la URL completa, y ahí viaja el token del captcha (pago).
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     if args.comando == "init-db":
         _init_db()
