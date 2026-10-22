@@ -1,0 +1,12 @@
+# Normaliza finales de línea: el repo se despliega en Linux (Docker/Dokploy).
+* text=auto eol=lf
+
+# Estos sí necesitan CRLF si algún día se ejecutan en Windows.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.xlsx binary

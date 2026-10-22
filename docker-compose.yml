@@ -1,0 +1,63 @@
+# Stack completo para desarrollo local y para Dokploy.
+# En Dokploy conviene usar Postgres como servicio aparte y pasar DATABASE_URL
+# por variables de entorno; el servicio `db` queda para local.
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rocketbot}
+      POSTGRES_USER: ${POSTGRES_USER:-expedientes}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiar}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-expedientes} -d ${POSTGRES_DB:-rocketbot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://expedientes:cambiar@db:5432/rocketbot}
+      CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-none}
+      TWOCAPTCHA_KEY: ${TWOCAPTCHA_KEY:-}
+      PJUD_API_BASE: ${PJUD_API_BASE:-https://conexpbe.justucuman.gov.ar/api/proceedings}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      MAIL_DESTINATARIOS: ${MAIL_DESTINATARIOS:-}
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn expedientes.api:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+  worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://expedientes:cambiar@db:5432/rocketbot}
+      CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-none}
+      TWOCAPTCHA_KEY: ${TWOCAPTCHA_KEY:-}
+      REQUEST_DELAY_S: ${REQUEST_DELAY_S:-3.0}
+      MAX_EXPEDIENTES_PER_RUN: ${MAX_EXPEDIENTES_PER_RUN:-500}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      MAIL_DESTINATARIOS: ${MAIL_DESTINATARIOS:-}
+    command: ["expedientes", "worker", "--interval", "3600", "--notify"]
+
+volumes:
+  pgdata:

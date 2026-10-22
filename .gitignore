@@ -1,0 +1,36 @@
+# Entorno
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Secretos — NUNCA al repo
+.env
+.env.*
+!.env.example
+
+# Datos locales
+logs/
+*.log
+*.db
+*.sqlite3
+*.xlsx
+*.csv
+!docs/*.csv
+
+# Editores / SO
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Windows
+desktop.ini
