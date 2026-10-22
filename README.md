@@ -20,14 +20,20 @@ como **sistema independiente sobre PostgreSQL**.
     `UNIQUE` (el bot los hubiera duplicado)
 - `GET /health`, `/api/resumen`, `/api/corridas`, `/api/expedientes` y el panel: ✅
 - Endpoint del PJud probado con **captcha real (2captcha)**:
-  - un solo token sirve para toda la corrida (varios expedientes), no uno por
-    expediente
+  - un token sirve para muchos expedientes (no uno por expediente), pero vence a
+    los **~2 minutos**: el worker lo renueva solo (`CAPTCHA_TOKEN_TTL_S=90`)
   - corrida real verificada: expediente `762/22` pasó de 220 a **224
     movimientos**, detectó 4 nuevos y quedó en `SI`
+  - **corrida 5**: 50 expedientes, `DONE`, 3 `SI` / 47 `NO` / 0 `KO`, 494 s
+    (9,8 s por expediente), sin fallos de captcha
 - Endpoint del PJud probado: con token inválido devuelve `404` + mensaje
-  *"No se puede validar el captcha"*. El sistema **aborta la corrida** y la marca
-  `FAILED`, sin ensuciar los expedientes con `KO` falsos.
-- Pendiente: primera corrida masiva y despliegue en Dokploy.
+  *"No se puede validar el captcha"*. El sistema renueva el token y reintenta una
+  vez; si igual falla, **aborta la corrida** y la marca `FAILED`, sin ensuciar los
+  expedientes con `KO` falsos.
+- 2captcha devuelve `ERROR_CAPTCHA_UNSOLVABLE` de forma esporádica: se reintenta
+  hasta 3 veces con espera antes de abortar.
+- Pendiente: corrida masiva de los 3.509 expedientes sin consultar y despliegue
+  en Dokploy.
 
 ## Arquitectura
 
@@ -98,6 +104,7 @@ Ver `.env.example`. Las importantes:
 | `DATABASE_URL` | `postgresql+psycopg://user:pass@host:port/rocketbot` |
 | `CAPTCHA_PROVIDER` | `none` \| `twocaptcha` \| `playwright` |
 | `TWOCAPTCHA_KEY` | solo si usás 2captcha |
+| `CAPTCHA_TOKEN_TTL_S` | vida útil del token antes de renovarlo (default 90s) |
 | `REQUEST_DELAY_S` | pausa entre requests (default 3s) |
 | `MAX_EXPEDIENTES_PER_RUN` | tope por corrida |
 | `SMTP_*`, `MAIL_DESTINATARIOS` | envío del resumen |
@@ -196,6 +203,10 @@ Rocketbot queda como respaldo permanente: no hay fase de retiro.
 - Mantener `REQUEST_DELAY_S` alto (3s) para no saturar el servidor del PJud.
 - El captcha es el punto más frágil. Si se consigue acceso oficial, se reemplaza
   `services/captcha.py` sin tocar el resto.
-- Se pide **un token por corrida** y se reutiliza en todos los expedientes
-  (verificado: el PJud lo acepta para consultas sucesivas). El logger de `httpx`
-  se silencia para que el token no quede en los logs.
+- Se pide **un token cada ~90 s** y se reutiliza en todos los expedientes que se
+  puedan consultar antes de que venza (verificado: el PJud lo acepta para
+  consultas sucesivas). El logger de `httpx` se silencia para que el token no
+  quede en los logs.
+- Si el PJud rechaza el token, se pide uno nuevo y se reintenta el mismo
+  expediente. Solo si vuelve a fallar se aborta la corrida (lo ya procesado queda
+  confirmado y la próxima corrida retoma desde ahí).

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .models import Corrida, CorridaItem, Expediente, Movimiento
-from .services.captcha import obtener_token
+from .services.captcha import CaptchaError, obtener_token
 from .services.mailer import enviar, plantilla_resumen
 from .services.pjud import CaptchaInvalido, PjudClient, hash_movimiento, parse_fecha
 
@@ -27,6 +27,57 @@ log = logging.getLogger(__name__)
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+class TokenManager:
+    """Administra el token de captcha, que vence a los ~2 minutos.
+
+    Se reutiliza mientras sea válido (una resolución sirve para muchos
+    expedientes) y se renueva solo cuando vence o cuando el PJud lo rechaza.
+    """
+
+    def __init__(
+        self,
+        fijo: str | None = None,
+        ttl_s: int | None = None,
+        obtener=obtener_token,
+    ) -> None:
+        self._fijo = fijo
+        self._ttl = ttl_s if ttl_s is not None else settings().captcha_token_ttl_s
+        self._obtener = obtener
+        self._valor: str | None = None
+        self._desde = 0.0
+
+    def get(self, forzar: bool = False) -> str:
+        if self._fijo:
+            return self._fijo
+        vencido = (time.monotonic() - self._desde) > self._ttl
+        if forzar or self._valor is None or vencido:
+            self._valor = self._obtener()
+            self._desde = time.monotonic()
+            log.info("Token de captcha renovado")
+        return self._valor
+
+
+def _procesar_con_reintento(
+    session: Session,
+    client: PjudClient,
+    expediente: Expediente,
+    tokens: TokenManager,
+) -> tuple[str, str | None, int]:
+    """Procesa un expediente; si el token venció, lo renueva y reintenta una vez."""
+    try:
+        return procesar_expediente(session, client, expediente, tokens.get())
+    except CaptchaInvalido:
+        session.rollback()
+        log.warning(
+            "Token rechazado al consultar %s: se renueva y se reintenta",
+            expediente.numero,
+        )
+        fresco = session.get(Expediente, expediente.id)
+        if fresco is None:
+            raise
+        return procesar_expediente(session, client, fresco, tokens.get(forzar=True))
 
 
 def elegir_expedientes(session: Session, limite: int) -> list[Expediente]:
@@ -108,7 +159,7 @@ def procesar_expediente(
 def run_cycle(
     session: Session,
     *,
-    token: str,
+    token: str | None = None,
     limite: int | None = None,
     notificar: bool = False,
     modo: str = "pjud",
@@ -116,6 +167,7 @@ def run_cycle(
     """Ejecuta una corrida completa y devuelve el id de la corrida."""
     cfg = settings()
     limite = limite or cfg.max_expedientes_per_run
+    tokens = TokenManager(fijo=token)
 
     corrida = Corrida(modo=modo, estado="RUNNING")
     session.add(corrida)
@@ -138,12 +190,17 @@ def run_cycle(
             numero = expediente.numero
             inicio = time.perf_counter()
             try:
-                resultado, motivo, insertados = procesar_expediente(
-                    session, client, expediente, token
+                resultado, motivo, insertados = _procesar_con_reintento(
+                    session, client, expediente, tokens
                 )
                 session.commit()
+            except CaptchaError as exc:
+                session.rollback()
+                error_corrida = f"no se pudo obtener un token válido: {exc}"
+                log.error("%s — se aborta la corrida %s", error_corrida, corrida_id)
+                break
             except CaptchaInvalido as exc:
-                # El token no sirve: no tiene sentido seguir marcando todo KO.
+                # Ni con un token nuevo: no tiene sentido seguir marcando todo KO.
                 session.rollback()
                 error_corrida = f"token rechazado por el PJud: {exc}"
                 log.error("%s — se aborta la corrida %s", error_corrida, corrida_id)
@@ -213,8 +270,3 @@ def run_cycle(
         )
 
     return corrida_id
-
-
-def token_para_corrida() -> str:
-    """Obtiene el token una vez por corrida y lo reutiliza."""
-    return obtener_token()

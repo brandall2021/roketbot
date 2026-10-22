@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     captcha_provider: str = "none"
     twocaptcha_key: str = ""
     twocaptcha_poll_timeout_s: int = 120
+    # El token de reCAPTCHA dura ~2 minutos: se renueva solo durante la corrida.
+    captcha_token_ttl_s: int = 90
 
     # --- Ritmo de consulta ---
     request_delay_s: float = 3.0

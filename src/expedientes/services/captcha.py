@@ -40,7 +40,40 @@ def obtener_token() -> str:
 # --------------------------------------------------------------------------
 # 2captcha
 # --------------------------------------------------------------------------
+REINTENTOS_2CAPTCHA = 3
+
+
+def _reintentable(mensaje: str) -> bool:
+    """Errores transitorios del servicio vs. errores de configuración."""
+    claves = ("UNSOLVABLE", "CAPCHA_NOT_READY", "timeout", "TIMEOUT", "Error de red")
+    return any(clave in mensaje for clave in claves)
+
+
 def _token_twocaptcha() -> str:
+    """Resuelve el captcha reintentando ante fallos transitorios.
+
+    2captcha devuelve ERROR_CAPTCHA_UNSOLVABLE de forma esporádica; abortar
+    toda la corrida por eso sería desperdiciar el trabajo ya hecho.
+    """
+    ultimo = ""
+    for intento in range(1, REINTENTOS_2CAPTCHA + 1):
+        try:
+            return _resolver_twocaptcha()
+        except (CaptchaError, httpx.HTTPError) as exc:
+            ultimo = f"{type(exc).__name__}: {exc}"
+            transitorio = isinstance(exc, httpx.HTTPError) or _reintentable(str(exc))
+            if not transitorio:
+                raise
+            log.warning(
+                "2captcha intento %s/%s falló: %s", intento, REINTENTOS_2CAPTCHA, ultimo
+            )
+            time.sleep(5 * intento)
+    raise CaptchaError(
+        f"2captcha no pudo resolver el captcha tras {REINTENTOS_2CAPTCHA} intentos: {ultimo}"
+    )
+
+
+def _resolver_twocaptcha() -> str:
     cfg = settings()
     if not cfg.twocaptcha_key:
         raise CaptchaError("Falta TWOCAPTCHA_KEY")

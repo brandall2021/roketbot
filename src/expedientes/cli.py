@@ -21,7 +21,7 @@ from .config import settings
 from .db import Base, SessionLocal, engine
 from .models import CentroJudicial, Corrida, Expediente, Movimiento
 from .services import ingest
-from .worker import run_cycle, token_para_corrida
+from .worker import run_cycle
 
 log = logging.getLogger("expedientes")
 
@@ -116,18 +116,18 @@ def main(argv: list[str] | None = None) -> int:
             resultado = ingest.importar_desde_sqlserver(session, args.conn)
         print(resultado)
     elif args.comando == "run":
-        token = args.token or token_para_corrida()
         with SessionLocal() as session:
-            corrida_id = run_cycle(session, token=token, limite=args.limit, notificar=args.notify)
+            corrida_id = run_cycle(
+                session, token=args.token, limite=args.limit, notificar=args.notify
+            )
         print(f"Corrida {corrida_id} finalizada.")
     elif args.comando == "worker":
-        token = args.token if hasattr(args, "token") else None
         while True:
             try:
                 with SessionLocal() as session:
                     corrida_id = run_cycle(
                         session,
-                        token=token or token_para_corrida(),
+                        token=getattr(args, "token", None),
                         limite=args.limit,
                         notificar=args.notify,
                     )
