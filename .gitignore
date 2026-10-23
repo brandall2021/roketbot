@@ -1,36 +1,15 @@
-# Entorno
-.venv/
-__pycache__/
-*.py[cod]
-*.egg-info/
-build/
+node_modules/
+.next/
 dist/
-
-# Secretos — NUNCA al repo
+out/
+coverage/
 .env
-.env.*
-!.env.example
-
-# Datos locales
-logs/
+.env.local
+.env.*.local
 *.log
-*.db
-*.sqlite3
-*.xlsx
-*.csv
-!docs/*.csv
+.git/
+tsconfig.tsbuildinfo
+next-env.d.ts
 
-# Editores / SO
-.idea/
-.vscode/
-.DS_Store
-Thumbs.db
-
-# Testing
-.pytest_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# Windows
-desktop.ini
+# `uploads/` no existe en este proyecto (no se guardan archivos), pero si alguna
+# vez se agrega, va acá y en .dockerignore.

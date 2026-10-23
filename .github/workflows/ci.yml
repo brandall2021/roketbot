@@ -5,22 +5,43 @@ on:
     branches: [main]
   pull_request:
 
+# Un push nuevo cancela la corrida anterior del mismo branch: el build es largo y
+# el resultado viejo no sirve para nada.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: "3.13"
-          cache: pip
+          node-version: "20"
+          cache: npm
 
       - name: Instalar
-        run: pip install -e ".[dev]"
+        run: npm ci
 
-      - name: Lint
-        run: ruff check src tests
+      # Typecheck y tests no tocan la base: las queries están mockeadas con vi.mock.
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Tests
-        run: pytest -q
+        run: npx vitest run
+
+      # El worker se compila aparte (CommonJS → dist/node); si esto rompe, el
+      # servicio `worker` de Dokploy no arranca aunque el panel funcione.
+      - name: Compilar worker
+        run: npm run build:worker
+
+      # `next build` también corre ESLint (ignoreDuringBuilds está en false).
+      # Las variables son de prueba: ninguna ruta las lee en tiempo de build, pero
+      # `env` vacío podría hacer fallar una página que se prerenderiza.
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://usuario:clave@localhost:5432/expedientes
+          JWT_SECRET: solo-para-el-build

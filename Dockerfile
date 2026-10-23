@@ -1,23 +1,66 @@
-FROM python:3.13-slim
+# syntax=docker/dockerfile:1
+#
+# Imagen única para las dos cosas que corre este proyecto:
+#
+#   * el panel web  -> docker-entrypoint.sh server   (Next standalone)
+#   * el worker     -> docker-entrypoint.sh worker   (consulta al PJud)
+#
+# Un solo build y dos contenedores con el mismo image, cambiando sólo el comando.
+# En Dokploy son dos servicios apuntando a la misma imagen; en docker-compose están
+# como `app` y `worker`.
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
-
+FROM node:20-alpine AS deps
 WORKDIR /app
+COPY package.json package-lock.json ./
+# `npm ci` y no `npm install`: el lockfile es la fuente de verdad de las versiones.
+RUN npm ci
 
-COPY pyproject.toml README.md ./
-COPY src ./src
-RUN pip install --upgrade pip && pip install .
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+# El worker se compila aparte (tsconfig.node.json, CommonJS) porque Node no resuelve
+# los alias `@/` que usa Next; por eso los imports de worker/** son relativos.
+RUN npm run build && npm run build:worker
 
-COPY alembic.ini ./
-COPY migrations ./migrations
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+# Zona horaria fija. Las fechas de calendario ya viajan como cadena `YYYY-MM-DD`
+# (el parser de `lib/db.ts` y `type Dia` del motor), así que el día no depende del host;
+# esto es por `timestamptz`: sin TZ el contenedor hereda el del servidor y las horas de
+# las corridas se mostrarían distinto según la máquina. UTC = la hora que guarda Postgres.
+ENV TZ=UTC
 
-RUN useradd --create-home --uid 10001 app && chown -R app:app /app
-USER app
+RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 
-EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status==200 else 1)"
+# --- panel (standalone: server.js + node_modules trazado por Next: next, react, pg,
+#     jsonwebtoken, pdfkit, csv-parse) ---
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-CMD ["uvicorn", "expedientes.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# --- worker: código compilado + los dos paquetes que Next NO trazó ---
+# `nodemailer` y `bcryptjs` no los importa ninguna ruta del sitio (sólo el worker y
+# el seed), así que el trazado de Next los ignora y hay que copiarlos a mano. Son de
+# cero dependencias, por eso alcanza con la carpeta.
+COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist
+COPY --from=deps /app/node_modules/nodemailer ./node_modules/nodemailer
+COPY --from=deps /app/node_modules/bcryptjs ./node_modules/bcryptjs
+
+# --- migraciones: las lee el runner de `dist/node/scripts/migrate.js` relativo al cwd ---
+COPY --from=builder --chown=nextjs:nodejs /app/migrations ./migrations
+
+COPY --chown=nextjs:nodejs docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# Sin comando: el entrypoint decide. `docker run ... node server.js` también funciona.
+CMD ["server"]

@@ -1,0 +1,45 @@
+{
+  "name": "expedientes",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Expedientes del Poder Judicial de Tucumán: panel web + consulta automática (unificación de juridico y roketbot)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "migrate": "tsx scripts/migrate.ts",
+    "seed": "tsx scripts/seed.ts",
+    "corrida": "tsx worker/cli.ts run",
+    "worker": "tsx worker/cli.ts worker",
+    "build:worker": "tsc -p tsconfig.node.json"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "csv-parse": "^5.6.0",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^1.30.0",
+    "next": "^14.2.32",
+    "nodemailer": "^7.0.5",
+    "pdfkit": "^0.19.1",
+    "pg": "^8.16.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^20.19.0",
+    "@types/nodemailer": "^7.0.1",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.15.4",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.5",
+    "tsx": "^4.20.3",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.4"
+  }
+}

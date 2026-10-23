@@ -1,63 +1,82 @@
-# Stack completo para desarrollo local y para Dokploy.
-# En Dokploy conviene usar Postgres como servicio aparte y pasar DATABASE_URL
-# por variables de entorno; el servicio `db` queda para local.
+# Stack unificado (panel + worker + Postgres).
+#
+# Es la referencia para correr todo en una máquina (o para leer cómo se conectan las
+# piezas). En Dokploy no se usa este archivo: son dos servicios que comparten la
+# misma imagen y cambian sólo el comando (`server` / `worker`), más la base que ya
+# está corriendo ahí.
+#
+# Los secretos NUNCA van acá: `.env` (ignorado por el build) o las variables del
+# servicio.
 
 services:
   db:
-    image: postgres:18-alpine
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-rocketbot}
+      POSTGRES_DB: ${POSTGRES_DB:-expedientes}
       POSTGRES_USER: ${POSTGRES_USER:-expedientes}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiar}
+      # Obligatorio: sin contraseña, el compose levanta una base abierta.
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?poné POSTGRES_PASSWORD en .env}"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-expedientes} -d ${POSTGRES_DB:-rocketbot}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-expedientes}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 6
+    # Sin puertos publicados: a la base la atacan por la red interna del compose.
+    # Si hace falta exponerla para administrar, que sea a 127.0.0.1 y con firewall.
 
-  api:
+  app:
     build: .
+    image: expedientes:local
     restart: unless-stopped
+    command: ["server"]
     depends_on:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://expedientes:cambiar@db:5432/rocketbot}
-      CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-none}
-      TWOCAPTCHA_KEY: ${TWOCAPTCHA_KEY:-}
-      PJUD_API_BASE: ${PJUD_API_BASE:-https://conexpbe.justucuman.gov.ar/api/proceedings}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      MAIL_DESTINATARIOS: ${MAIL_DESTINATARIOS:-}
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn expedientes.api:app --host 0.0.0.0 --port 8000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-expedientes}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-expedientes}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET es obligatoria}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NOMBRE: ${ADMIN_NOMBRE:-Administrador}
+      # El panel es el único que migra; el worker espera su esquema.
+      MIGRAR_AL_INICIAR: "1"
+      # Crear el administrador al subir sólo tiene sentido el primer arranque.
+      SEED_AL_INICIAR: ${SEED_AL_INICIAR:-0}
+      PJUD_API_BASE: ${PJUD_API_BASE:-}
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${APP_PORT:-3000}:3000"
 
   worker:
+    # Mismo image que `app`: un solo build, dos procesos.
+    image: expedientes:local
     build: .
     restart: unless-stopped
+    command: ["worker"]
     depends_on:
-      api:
+      app:
         condition: service_started
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://expedientes:cambiar@db:5432/rocketbot}
-      CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-none}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-expedientes}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-expedientes}
+      # Aca se asume que el worker tiene que consultar; con CAPTCHA_PROVIDER=none (el
+      # default de .env.example) cada ciclo tira "configurá 'twocaptcha'" y no consulta.
+      CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-twocaptcha}
       TWOCAPTCHA_KEY: ${TWOCAPTCHA_KEY:-}
-      REQUEST_DELAY_S: ${REQUEST_DELAY_S:-3.0}
+      REQUEST_DELAY_S: ${REQUEST_DELAY_S:-3}
       MAX_EXPEDIENTES_PER_RUN: ${MAX_EXPEDIENTES_PER_RUN:-500}
+      WORKER_INTERVALO_S: ${WORKER_INTERVALO_S:-3600}
       SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       MAIL_DESTINATARIOS: ${MAIL_DESTINATARIOS:-}
-    command: ["expedientes", "worker", "--interval", "3600", "--notify"]
+    # Un solo worker: dos réplicas consultarían el mismo padrón a la vez y duplicarían
+    # el gasto de captcha (la idempotencia evita datos repetidos, no el gasto).
+    deploy:
+      replicas: 1
 
 volumes:
-  pgdata:
+  db-data:

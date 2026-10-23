@@ -1,0 +1,20 @@
+node_modules
+.next
+dist
+.git
+.env
+.env.local
+Dockerfile
+.dockerignore
+docker-compose.yml
+README.md
+AUDITORIA.md
+npm-debug.log
+tests
+coverage
+*.test.ts
+*.tsbuildinfo
+.qoder
+
+# `migrations` y `docker-entrypoint.sh` NO se ignoran: el runner de migraciones lee
+# los .sql desde el cwd y el entrypoint es parte de la imagen.

@@ -1,5 +1,13 @@
 # Normaliza finales de línea: el repo se despliega en Linux (Docker/Dokploy).
+# Sin esto, un clon hecho en Windows deja `docker-entrypoint.sh` con CRLF y el
+# contenedor muere en el shebang (`/bin/sh^M`); el fixpoint depende de la máquina
+# donde se clonó, que es justo lo que .gitattributes evita.
 * text=auto eol=lf
+
+# El entrypoint y cualquier script de Linux, terminantes aunque alguien los edite
+# con autocrlf activado.
+*.sh eol=lf
+docker-entrypoint.sh eol=lf
 
 # Estos sí necesitan CRLF si algún día se ejecutan en Windows.
 *.bat text eol=crlf
@@ -9,4 +17,5 @@
 # Binarios
 *.png binary
 *.jpg binary
+*.ico binary
 *.xlsx binary
