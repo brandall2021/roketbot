@@ -37,7 +37,9 @@ export type CorridaCreada = { id: number };
 
 async function crearCorrida(modo: string): Promise<number> {
   const { rows } = await ejecutar(
-    `INSERT INTO corridas (modo, estado) VALUES ($1, 'RUNNING') RETURNING id`,
+    `INSERT INTO corridas (modo, estado, total, cnt_si, cnt_no, cnt_ko)
+     VALUES ($1, 'RUNNING', 0, 0, 0, 0)
+     RETURNING id`,
     [modo]
   );
   return num((rows[0] as { id: number | string } | undefined)?.id);
