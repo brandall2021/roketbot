@@ -120,6 +120,7 @@ Dos columnas de estado que se confunden fácil:
 - `0002_datos_derivados.sql` — provincia, `estado_nombre` y `documento` derivados de lo que ya estaba importado.
 - `0003_programacion_corridas.sql` — configuración persistente de periodicidad que consume el worker.
 - `0004_solicitudes_corrida_individual.sql` — cola persistente para pedidos de corrida por expediente desde la carátula.
+- `0005_worker_heartbeat.sql` — pulso del worker para probar su estado desde el panel sin consulta al PJud.
 
 Ambos archivos son idempotentes (`IF NOT EXISTS` / `OR REPLACE` / `WHERE ... IS NULL`),
 así que corren igual sobre la base del bot con datos y sobre una vacía, y se pueden

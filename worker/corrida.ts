@@ -16,6 +16,7 @@ import {
   guardarProgramacionCorridas,
   programarSiguienteTrasCorrida,
   reclamarCorridaProgramada,
+  registrarPulsoWorker,
 } from "../lib/programacion";
 import {
   finalizarSolicitudIndividual,
@@ -264,6 +265,20 @@ export async function workerResidente(opts: { limite?: number; intervalo?: numbe
     await guardarProgramacionCorridas(true, opts.intervalo, null);
   }
   console.log("[worker] residente: revisando la programación persistida cada 15 segundos");
+  let enviandoPulso = false;
+  const enviarPulso = async () => {
+    if (enviandoPulso) return;
+    enviandoPulso = true;
+    try {
+      await registrarPulsoWorker();
+    } catch (e) {
+      console.error(`[worker] no se pudo registrar el pulso: ${mensaje(e)}`);
+    } finally {
+      enviandoPulso = false;
+    }
+  };
+  void enviarPulso();
+  setInterval(() => void enviarPulso(), 15_000);
   for (;;) {
     try {
       const solicitudAtendida = await procesarSolicitudIndividual();

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import ProgramacionCorridasForm from "@/components/ProgramacionCorridasForm";
+import PruebasCorrida from "@/components/PruebasCorrida";
 import { sesionAdmin } from "@/lib/sesion";
 import { leerProgramacionCorridas } from "@/lib/programacion";
 
@@ -22,6 +23,7 @@ export default async function ProgramacionCorridasPage() {
         <Link className="btn btn-ghost btn-sm" href="/corridas">Ver historial</Link>
       </div>
       <ProgramacionCorridasForm initial={programacion} />
+      <PruebasCorrida />
     </AppShell>
   );
 }

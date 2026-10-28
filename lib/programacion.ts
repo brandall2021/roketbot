@@ -75,3 +75,13 @@ export async function programarSiguienteTrasCorrida(): Promise<void> {
       WHERE id = 1 AND habilitada = TRUE`
   );
 }
+
+/** Latido independiente del ciclo de trabajo, también durante una corrida larga. */
+export async function registrarPulsoWorker(): Promise<void> {
+  const resultado = await ejecutar(
+    `UPDATE programacion_corridas
+        SET worker_ultimo_pulso = now()
+      WHERE id = 1`
+  );
+  if (resultado.rowCount === 0) throw new Error("No existe la configuración del worker");
+}

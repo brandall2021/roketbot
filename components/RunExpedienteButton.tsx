@@ -8,9 +8,11 @@ type Estado = "IDLE" | "PENDING" | "RUNNING" | "DONE" | "FAILED";
 export default function RunExpedienteButton({
   expedienteId,
   expedienteNumero,
+  botonInicial = "Correr",
 }: {
   expedienteId: number;
   expedienteNumero: string;
+  botonInicial?: string;
 }) {
   const [solicitudId, setSolicitudId] = useState<number | null>(null);
   const [corridaId, setCorridaId] = useState<number | null>(null);
@@ -72,7 +74,7 @@ export default function RunExpedienteButton({
   }
 
   const ocupado = estado === "PENDING" || estado === "RUNNING";
-  const texto = estado === "PENDING" ? "En cola…" : estado === "RUNNING" ? "Consultando…" : estado === "DONE" ? "Correr otra vez" : estado === "FAILED" ? "Reintentar" : "Correr";
+  const texto = estado === "PENDING" ? "En cola…" : estado === "RUNNING" ? "Consultando…" : estado === "DONE" ? "Correr otra vez" : estado === "FAILED" ? "Reintentar" : botonInicial;
 
   return (
     <div style={{ display: "grid", justifyItems: "end", gap: 4 }}>
