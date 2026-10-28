@@ -23,8 +23,11 @@ export default async function CorridasPage() {
   const [corridas, resumen] = await Promise.all([listadoDeCorridas(40), resumenDeSistema()]);
 
   return (
-    <AppShell>
-      <h2 style={{ fontSize: 20, marginBottom: 4 }}>Corridas de consulta</h2>
+      <AppShell>
+      <div className="toolbar" style={{ marginBottom: 14 }}>
+        <h2 style={{ fontSize: 20, marginBottom: 4 }}>Corridas de consulta</h2>
+        <Link className="btn btn-primary btn-sm" href="/corridas/programacion">Programar corridas</Link>
+      </div>
       <p className="muted" style={{ marginBottom: 16 }}>
         Cada corrida es un pasazo por el padrón contra la API del Poder Judicial. Los estados son{" "}
         <BadgeResultado valor="SI" /> con movimientos nuevos,{" "}

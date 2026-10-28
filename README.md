@@ -118,6 +118,7 @@ Dos columnas de estado que se confunden fácil:
 
 - `0001_unificar_esquema.sql` — tablas, columnas nuevas, trigger de `updated_at`, vista.
 - `0002_datos_derivados.sql` — provincia, `estado_nombre` y `documento` derivados de lo que ya estaba importado.
+- `0003_programacion_corridas.sql` — configuración persistente de periodicidad que consume el worker.
 
 Ambos archivos son idempotentes (`IF NOT EXISTS` / `OR REPLACE` / `WHERE ... IS NULL`),
 así que corren igual sobre la base del bot con datos y sobre una vacía, y se pueden
@@ -165,10 +166,10 @@ Reglas del bot que se conservaron **por su comportamiento probado**, no por nost
   basura tipo `13/13/13`. Un `INSERT` con fecha inválida tiraba y el expediente entero
   pasaba a KO por una línea basura.
 
-El panel de **Corridas es deliberadamente de sólo lectura**: no hay botón "Ejecutar".
-Una corrida real tarda minutos, gasta créditos de captcha y tiene que quedar registrada
-aun si el usuario cierra la pestaña; por eso la dispara el servicio `worker` o la CLI, no
-el navegador.
+El historial de **Corridas** es de sólo lectura. Desde el enlace **Programar corridas**
+del menú de administración se activa/pausa la ejecución periódica y se elige su intervalo.
+La configuración queda en PostgreSQL; el worker residente la consulta sin depender de
+que el panel siga abierto. Las ejecuciones puntuales siguen disponibles por CLI.
 
 ---
 
@@ -213,7 +214,8 @@ npm run dev                           # http://localhost:3000
 | `npm run seed` | alta del administrador inicial |
 | `npm run build:worker` | `tsc -p tsconfig.node.json` → `dist/node` |
 | `npm run corrida -- --limit 50` | una corrida y corta |
-| `npm run worker` | residente, cada `WORKER_INTERVALO_S` |
+| `npm run corrida -- --expediente 123` | consulta sólo el ID interno 123 |
+| `npm run worker -- --interval 21600 --limit 200` | residente; programa cada 6 h, hasta 200 expedientes por corrida |
 
 ### 4. Worker y CLI
 
@@ -221,11 +223,14 @@ El worker no necesita Next: se lo puede correr directo con `tsx` o desde la imag
 compilada.
 
 ```bash
-npx tsx worker/cli.ts run --limit 50 --notify    # una corrida
-npx tsx worker/cli.ts worker --interval 3600      # residente
+npx tsx worker/cli.ts run --limit 50 --notify    # una corrida del padrón
+npx tsx worker/cli.ts run --expediente 123       # sólo el expediente con ID interno 123
+npx tsx worker/cli.ts worker --interval 21600 --limit 200 # configura cada 6 horas y deja el worker residente
 npx tsx worker/cli.ts retry-ko --corrida 12       # reintenta los KO de una corrida
 npx tsx worker/cli.ts stats                        # resumen de la base
 ```
+
+`--expediente` recibe el **ID interno numérico** que aparece en la URL de la ficha (`/expedientes/123`), no el número de carátula. El worker residente revisa la programación de PostgreSQL cada 15 segundos. La migración inicial programa una corrida inmediata y luego la periodicidad elegida; al guardar desde el panel, la próxima corrida queda para un intervalo después del guardado. `--interval` actualiza la configuración persistida y requiere que las migraciones estén aplicadas.
 
 El token se puede pasar con `--token` o por `CAPTCHA_TOKEN`; **no** lo escribas en un
 script commiteado ni lo subas a un issue.
@@ -354,8 +359,8 @@ PJud y el gasto de captcha.
    Dockerfile, comando `server`. Variables: `DATABASE_URL`, `JWT_SECRET`,
    `MIGRAR_AL_INICIAR=1`, y `SEED_AL_INICIAR=1` **sólo el primer arranque**.
 3. **Servicio `worker`**: misma imagen/repo, comando `worker`. Variables: `DATABASE_URL`,
-   `CAPTCHA_PROVIDER=twocaptcha`, `TWOCAPTCHA_KEY`, `REQUEST_DELAY_S`, `MAX_EXPEDIENTES_PER_RUN`,
-   `WORKER_INTERVALO_S`, y `SMTP_*` si querés el resumen por mail. **No necesita
+    `CAPTCHA_PROVIDER=twocaptcha`, `TWOCAPTCHA_KEY`, `REQUEST_DELAY_S`, `MAX_EXPEDIENTES_PER_RUN`,
+    la programación guardada desde el panel, y `SMTP_*` si querés el resumen por mail. **No necesita
    `JWT_SECRET`**: no levanta el panel ni lee sesiones.
 4. **Dominio**: `app` al puerto 3000 detrás del proxy de Dokploy (TLS con Let's Encrypt).
    El `worker` no expone puerto.

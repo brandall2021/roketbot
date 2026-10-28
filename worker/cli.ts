@@ -2,7 +2,7 @@
 /**
  * CLI del worker (antes `cli.py` del bot).
  *
- *     npx tsx worker/cli.ts run [--limit 50] [--token ...] [--notify]
+ *     npx tsx worker/cli.ts run [--limit 50] [--expediente ID] [--token ...] [--notify]
  *     npx tsx worker/cli.ts worker [--interval 3600] [--limit 50] [--notify]
  *     npx tsx worker/cli.ts retry-ko [--corrida 123]
  *     npx tsx worker/cli.ts stats
@@ -23,6 +23,7 @@ import { correrUna, reintentarKo, workerResidente } from "./corrida";
 type Args = {
   comando: string;
   limites: number | null;
+  expedienteId: number | null;
   token: string | null;
   notificar: boolean;
   intervalo: number | null;
@@ -34,6 +35,7 @@ function parsear(argv: string[]): Args {
   const args: Args = {
     comando,
     limites: null,
+    expedienteId: null,
     token: null,
     notificar: false,
     intervalo: null,
@@ -47,6 +49,10 @@ function parsear(argv: string[]): Args {
       case "--limit":
       case "-n":
         args.limites = Number(valor);
+        i++;
+        break;
+      case "--expediente":
+        args.expedienteId = Number(valor);
         i++;
         break;
       case "--token":
@@ -72,8 +78,17 @@ function parsear(argv: string[]): Args {
   if (args.limites !== null && (!Number.isFinite(args.limites) || args.limites <= 0)) {
     throw new Error("--limit tiene que ser un entero positivo");
   }
-  if (args.intervalo !== null && (!Number.isFinite(args.intervalo) || args.intervalo < 10)) {
-    throw new Error("--interval tiene que ser de al menos 10 segundos");
+  if (args.intervalo !== null && (!Number.isInteger(args.intervalo) || args.intervalo < 60 || args.intervalo > 2592000)) {
+    throw new Error("--interval tiene que estar entre 60 segundos y 30 días");
+  }
+  if (args.expedienteId !== null && (!Number.isInteger(args.expedienteId) || args.expedienteId <= 0)) {
+    throw new Error("--expediente tiene que ser el ID numérico positivo del expediente");
+  }
+  if (args.expedienteId !== null && comando !== "run") {
+    throw new Error("--expediente sólo se puede usar con el comando run");
+  }
+  if (args.expedienteId !== null && args.limites !== null) {
+    throw new Error("No combines --expediente con --limit");
   }
   return args;
 }
@@ -96,11 +111,13 @@ async function stats(): Promise<void> {
 
 const AYUDA = `uso: tsx worker/cli.ts <comando>
 
-  run [--limit N] [--token T] [--notify]   una corrida de consulta al PJud
-  worker [--interval S] [--limit N]        corridas en bucle
+  run [--limit N] [--expediente ID] [--token T] [--notify]
+                                           una corrida (padrón o expediente puntual)
+  worker [--interval S] [--limit N]        worker residente; --interval actualiza el panel
   retry-ko [--corrida ID]                  reprocesa sólo los KO
   stats                                    resumen de la base
 
+ID es el ID interno numérico de la base (visible en la URL de la ficha).
 El token se puede pasar por CAPTCHA_TOKEN; no lo escribas en un script commiteado.`;
 
 async function main(argv: string[]): Promise<number> {
@@ -111,15 +128,18 @@ async function main(argv: string[]): Promise<number> {
       const id = await correrUna({
         token: args.token,
         limite: args.limites ?? undefined,
+        expedienteId: args.expedienteId ?? undefined,
         notificar: args.notificar,
       });
       console.log(`Corrida ${id} finalizada.`);
       return 0;
     }
     case "worker": {
-      if (args.intervalo !== null) process.env.WORKER_INTERVALO_S = String(args.intervalo);
       // El bucle no termina nunca: lo corta el supervisor (docker) con SIGTERM.
-      await workerResidente();
+      await workerResidente({
+        limite: args.limites ?? undefined,
+        intervalo: args.intervalo ?? undefined,
+      });
       return 0;
     }
     case "retry-ko": {

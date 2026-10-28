@@ -12,6 +12,11 @@ import {
   type Resultado,
 } from "../lib/engine/ingest";
 import { notificarCorrida } from "../lib/mailer";
+import {
+  guardarProgramacionCorridas,
+  programarSiguienteTrasCorrida,
+  reclamarCorridaProgramada,
+} from "../lib/programacion";
 
 /**
  * Corrida de consulta contra el PJud (antes `worker.py` del bot Python).
@@ -104,6 +109,8 @@ export type OpcionesCorrida = {
   /** Token fijo para probar sin resolver captcha. */
   token?: string | null;
   limite?: number;
+  /** ID interno para ejecutar sólo un expediente. */
+  expedienteId?: number;
   notificar?: boolean;
   modo?: string;
 };
@@ -116,13 +123,18 @@ export type OpcionesCorrida = {
  */
 export async function correrUna(opts: OpcionesCorrida = {}): Promise<number> {
   const limite = opts.limite ?? limitePorCorrida();
-  const modo = opts.modo ?? "pjud";
+  const modo = opts.modo ?? (opts.expedienteId === undefined ? "pjud" : "pjud-individual");
+  const expedientes = opts.expedienteId === undefined
+    ? await expedientesPendientes(limite)
+    : [await expedientePorId(opts.expedienteId)].filter((e): e is ExpedienteConsulta => e !== null);
+  if (opts.expedienteId !== undefined && expedientes.length === 0) {
+    throw new Error(`No existe un expediente con ID ${opts.expedienteId}`);
+  }
   const tokens = new TokenManager({
     fijo: opts.token ?? (opcional("CAPTCHA_TOKEN") || null),
   });
 
   const corridaId = await crearCorrida(modo);
-  const expedientes = await expedientesPendientes(limite);
   await ejecutar(`UPDATE corridas SET total = $2 WHERE id = $1`, [corridaId, expedientes.length]);
   console.log(`[worker] corrida ${corridaId}: ${expedientes.length} expedientes a procesar`);
 
@@ -202,21 +214,29 @@ export async function correrUna(opts: OpcionesCorrida = {}): Promise<number> {
 }
 
 /**
- * Worker residente: corrida tras corrida, con una pausa entre ellas.
- * Es lo que reemplaza a la tarea programada del bot; en Dokploy se corre como
- * servicio aparte y el scheduler del panel queda para disparos puntuales.
+ * Worker residente: consulta la programación compartida con el panel y reclama
+ * cada corrida de forma atómica para evitar que dos réplicas ejecuten la misma.
  */
-export async function workerResidente(): Promise<never> {
-  const intervaloMs = entero("WORKER_INTERVALO_S", 3600) * 1000;
-  console.log(`[worker] residente: corrida cada ${Math.round(intervaloMs / 60000)} min`);
+export async function workerResidente(opts: { limite?: number; intervalo?: number } = {}): Promise<never> {
+  if (opts.intervalo !== undefined) {
+    await guardarProgramacionCorridas(true, opts.intervalo, null);
+  }
+  console.log("[worker] residente: revisando la programación persistida cada 15 segundos");
   for (;;) {
     try {
-      await correrUna({ notificar: true });
+      if (await reclamarCorridaProgramada()) {
+        console.log("[worker] ejecución programada iniciada");
+        try {
+          await correrUna({ limite: opts.limite, notificar: true });
+        } finally {
+          await programarSiguienteTrasCorrida();
+        }
+      }
     } catch (e) {
-      // Un error de base no tiene que matar el proceso: la próxima corrida intenta de nuevo.
-      console.error(`[worker] corrida falló: ${mensaje(e)}`);
+      // Un error de base no debe matar el proceso: se vuelve a revisar en 15 s.
+      console.error(`[worker] error al revisar/ejecutar la programación: ${mensaje(e)}`);
     }
-    await new Promise((r) => setTimeout(r, intervaloMs));
+    await new Promise((r) => setTimeout(r, 15_000));
   }
 }
 

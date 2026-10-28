@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, FolderOpen, Upload, FileArchive, Building2, MapPin, Table2, Users, RotateCcw, Activity } from "lucide-react";
+import { LayoutDashboard, FolderOpen, Upload, FileArchive, Building2, MapPin, Table2, Users, RotateCcw, Activity, CalendarClock } from "lucide-react";
 import { getMe } from "@/lib/client";
 import type { Kpis } from "@/components/KpiCards";
 
@@ -26,6 +26,7 @@ type NavItem = (typeof NAV)[number];
 // ofrezca una entrada que después redirige.
 const NAV_ADMIN: NavItem[] = [
   { href: "/corridas", label: "Corridas", Icon: Activity },
+  { href: "/corridas/programacion", label: "Programar corridas", Icon: CalendarClock },
   { href: "/usuarios", label: "Usuarios", Icon: Users },
 ];
 
