@@ -38,9 +38,9 @@ export async function guardarProgramacionCorridas(
   const resultado = await ejecutar(
     `UPDATE programacion_corridas
         SET habilitada = $1,
-            intervalo_segundos = $2,
+            intervalo_segundos = $2::integer,
             proxima_ejecucion = CASE
-              WHEN $1 THEN now() + ($2 * interval '1 second')
+              WHEN $1 THEN now() + ($2::integer * interval '1 second')
               ELSE NULL
             END,
             actualizado_en = now(),
