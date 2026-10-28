@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import AuthGuard from "@/components/AuthGuard";
+import RunExpedienteButton from "@/components/RunExpedienteButton";
 import { api } from "@/lib/client";
 
 type Row = Record<string, any>;
@@ -161,7 +162,7 @@ export default function CaratulaPage() {
                   <th>Centro</th>
                   <th>Unidad</th>
                   <th>Provincia</th>
-                  {isAdmin && <th></th>}
+                  {isAdmin && <th>Acciones</th>}
                 </tr>
               </thead>
               <tbody>
@@ -179,6 +180,10 @@ export default function CaratulaPage() {
                     {isAdmin && (
                       <td>
                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                          <RunExpedienteButton
+                            expedienteId={Number(row.ExpdteId)}
+                            expedienteNumero={String(row.ExpdteNro ?? row.ExpdteId)}
+                          />
                           <button className="btn btn-ghost btn-sm" onClick={() => abrirEditar(row.ExpdteId)}>Editar</button>
                           <button className="btn btn-danger btn-sm" onClick={() => eliminar(row.ExpdteId)}>Eliminar</button>
                         </div>

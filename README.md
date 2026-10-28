@@ -119,6 +119,7 @@ Dos columnas de estado que se confunden fácil:
 - `0001_unificar_esquema.sql` — tablas, columnas nuevas, trigger de `updated_at`, vista.
 - `0002_datos_derivados.sql` — provincia, `estado_nombre` y `documento` derivados de lo que ya estaba importado.
 - `0003_programacion_corridas.sql` — configuración persistente de periodicidad que consume el worker.
+- `0004_solicitudes_corrida_individual.sql` — cola persistente para pedidos de corrida por expediente desde la carátula.
 
 Ambos archivos son idempotentes (`IF NOT EXISTS` / `OR REPLACE` / `WHERE ... IS NULL`),
 así que corren igual sobre la base del bot con datos y sobre una vacía, y se pueden
@@ -169,7 +170,9 @@ Reglas del bot que se conservaron **por su comportamiento probado**, no por nost
 El historial de **Corridas** es de sólo lectura. Desde el enlace **Programar corridas**
 del menú de administración se activa/pausa la ejecución periódica y se elige su intervalo.
 La configuración queda en PostgreSQL; el worker residente la consulta sin depender de
-que el panel siga abierto. Las ejecuciones puntuales siguen disponibles por CLI.
+que el panel siga abierto. En `/caratula`, el administrador también puede encolar una
+consulta para el expediente de una fila; el worker procesa esa cola y deja el resultado
+en Corridas aunque se cierre la página.
 
 ---
 
@@ -215,6 +218,7 @@ npm run dev                           # http://localhost:3000
 | `npm run build:worker` | `tsc -p tsconfig.node.json` → `dist/node` |
 | `npm run corrida -- --limit 50` | una corrida y corta |
 | `npm run corrida -- --expediente 123` | consulta sólo el ID interno 123 |
+| `/caratula` → **Correr** | encola desde el panel la consulta del expediente de esa fila |
 | `npm run worker -- --interval 21600 --limit 200` | residente; programa cada 6 h, hasta 200 expedientes por corrida |
 
 ### 4. Worker y CLI

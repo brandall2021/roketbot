@@ -1,4 +1,4 @@
-import { ejecutar, num } from "../lib/db";
+import { consultarUno, ejecutar, num } from "../lib/db";
 import { entero, opcional } from "../lib/config";
 import { koParaReintentar } from "../lib/corridas";
 import { CaptchaError, TokenManager } from "../lib/engine/captcha";
@@ -17,6 +17,10 @@ import {
   programarSiguienteTrasCorrida,
   reclamarCorridaProgramada,
 } from "../lib/programacion";
+import {
+  finalizarSolicitudIndividual,
+  reclamarSolicitudIndividual,
+} from "../lib/solicitudes-corrida";
 
 /**
  * Corrida de consulta contra el PJud (antes `worker.py` del bot Python).
@@ -213,6 +217,44 @@ export async function correrUna(opts: OpcionesCorrida = {}): Promise<number> {
   return corridaId;
 }
 
+/** Ejecuta una solicitud enviada por el botón de la ficha y conserva su estado. */
+async function procesarSolicitudIndividual(): Promise<boolean> {
+  const solicitud = await reclamarSolicitudIndividual();
+  if (!solicitud) return false;
+
+  if (solicitud.expedienteId === null) {
+    await finalizarSolicitudIndividual(solicitud.id, "FAILED", null, "El expediente fue eliminado antes de ejecutarse");
+    return true;
+  }
+
+  try {
+    const corridaId = await correrUna({
+      expedienteId: solicitud.expedienteId,
+      modo: "pjud-individual-web",
+      notificar: true,
+    });
+    const corrida = await consultarUno<{ estado: string; error: string | null }>(
+      "SELECT estado, error FROM corridas WHERE id = $1",
+      [corridaId]
+    );
+    const fallo = corrida?.estado === "FAILED";
+    await finalizarSolicitudIndividual(
+      solicitud.id,
+      fallo ? "FAILED" : "DONE",
+      corridaId,
+      fallo ? corrida?.error || "La corrida finalizó con error" : null
+    );
+  } catch (e) {
+    await finalizarSolicitudIndividual(
+      solicitud.id,
+      "FAILED",
+      null,
+      mensaje(e)
+    );
+  }
+  return true;
+}
+
 /**
  * Worker residente: consulta la programación compartida con el panel y reclama
  * cada corrida de forma atómica para evitar que dos réplicas ejecuten la misma.
@@ -224,7 +266,8 @@ export async function workerResidente(opts: { limite?: number; intervalo?: numbe
   console.log("[worker] residente: revisando la programación persistida cada 15 segundos");
   for (;;) {
     try {
-      if (await reclamarCorridaProgramada()) {
+      const solicitudAtendida = await procesarSolicitudIndividual();
+      if (!solicitudAtendida && await reclamarCorridaProgramada()) {
         console.log("[worker] ejecución programada iniciada");
         try {
           await correrUna({ limite: opts.limite, notificar: true });
